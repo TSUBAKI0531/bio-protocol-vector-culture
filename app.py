@@ -2,7 +2,7 @@ import streamlit as st
 import io
 import matplotlib.pyplot as plt
 from Bio import SeqIO
-from Bio import Restriction # 拡張機能を介さず直接トップレベルでロード
+from Bio import Restriction  # インポートエラー回避のため一括インポート
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.SeqFeature import SeqFeature, FeatureLocation
@@ -15,7 +15,7 @@ from modules.designer import design_gibson_primers, check_dimer
 from modules.exporter import create_pdf
 
 # --- UI 基本設定 ---
-st.set_page_config(page_title="BioDesigner v1.2", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="BioDesigner v1.3", layout="wide", initial_sidebar_state="expanded")
 st.title("🧬 Cloning & Expression Designer")
 st.markdown("ベクター解析からプロトコル作成までを自動化します。")
 
@@ -44,15 +44,13 @@ if uploaded_file:
     with col1:
         st.subheader("制限酵素サイトの選択")
         
-        # 修正ポイント: 属性エラーを回避するため、モジュールの存在をチェックしつつ検索
-        # Commando が見つからない場合は AllEnzymes を使用するフォールバック
-        if hasattr(Restriction, 'Commando'):
-            enzyme_batch = Restriction.Commando
-        else:
-            enzyme_batch = Restriction.AllEnzymes
+        # 安定した制限酵素検索 (Commandoセットを使用)
+        try:
+            search_results = Restriction.Commando.search(record.seq)
+        except AttributeError:
+            # 万が一のフォールバック
+            search_results = Restriction.AllEnzymes.search(record.seq)
             
-        search_results = enzyme_batch.search(record.seq)
-        
         # 1箇所だけ切る(Unique Cutter)酵素のリストを作成
         unique_cutters = sorted([str(enz) for enz, sites in search_results.items() if len(sites) == 1])
         
@@ -61,7 +59,7 @@ if uploaded_file:
             
             # 選択された酵素のオブジェクトを取得して切断位置(0-based)を特定
             ez_obj = getattr(Restriction, selected_ez_name)
-            # Biopythonは1-basedなので0-basedに変換
+            # Biopythonの結果(1-based)を、スライス用の0-basedに変換
             cut_pos = search_results[ez_obj][0] - 1 
             st.info(f"📍 {selected_ez_name} の切断位置: {cut_pos} bp 目")
         else:
@@ -73,8 +71,10 @@ if uploaded_file:
         ins_raw = st.text_area("挿入する遺伝子配列(ATGC)を入力", placeholder="ATGGT...", height=150)
     
     if ins_raw and len(ins_raw) >= 40:
+        # 空白や改行を除去
         ins_seq = Seq(ins_raw.strip().replace("\n", "").replace(" ", "").upper())
-        # designerモジュールの呼び出し
+        
+        # プライマー設計
         primers = design_gibson_primers(record.seq, ins_seq, cut_pos)
         
         st.subheader("✅ 設計されたプライマー")
@@ -91,37 +91,41 @@ if uploaded_file:
         # --- 4. セクション2: 仮想プラスミド図 ---
         st.divider()
         st.header("🗺️ Step 3: Final Construct Map")
+        # ベクターを分割してインサートを挿入
         final_seq = record.seq[:cut_pos] + ins_seq + record.seq[cut_pos:]
         final_rec = SeqRecord(final_seq, id="Construct")
         
-        # フィーチャーの追加
+        # フィーチャー（視覚パーツ）の追加
         final_rec.features.append(SeqFeature(FeatureLocation(0, cut_pos), type="misc_feature", qualifiers={"label": ["Vector_Up"]}))
-        final_rec.features.append(SeqFeature(FeatureLocation(cut_pos, cut_pos+len(ins_seq)), type="CDS", qualifiers={"label": ["INSERT"], "color": ["#ff4b4b"]}))
-        final_rec.features.append(SeqFeature(FeatureLocation(cut_pos+len(ins_seq), len(final_seq)), type="misc_feature", qualifiers={"label": ["Vector_Down"]}))
+        final_rec.features.append(SeqFeature(FeatureLocation(cut_pos, cut_pos + len(ins_seq)), type="CDS", qualifiers={"label": ["INSERT"], "color": ["#ff4b4b"]}))
+        final_rec.features.append(SeqFeature(FeatureLocation(cut_pos + len(ins_seq), len(final_seq)), type="misc_feature", qualifiers={"label": ["Vector_Down"]}))
         
         fig, ax = plt.subplots(figsize=(10, 2))
-        BiopythonTranslator().translate_record(final_rec).plot(ax=ax, with_ruler=True)
+        translator = BiopythonTranslator()
+        graphic_record = translator.translate_record(final_rec)
+        graphic_record.plot(ax=ax, with_ruler=True)
         st.pyplot(fig)
 
     # --- 5. セクション3: 実験プロトコル ---
     st.divider()
     st.header("📋 Step 4: Experimental Protocol")
     
+    # 耐性遺伝子の特定
     res_genes = analyze_vector_resistance(record)
-    h_data = CULTURE_DB[host_choice]
+    h_data = CULTURE_DB.get(host_choice, {})
     
-    # 表示用データの整理
+    # KeyErrorを防ぐために .get() で安全にデータを取得
     protocol_disp = {
-        "Transformation": h_data["trans_method"],
-        "Media": h_data["media"],
-        "Incubation": h_data["incubation"],
-        "Selection": ", ".join([h_data["antibiotics"].get(g, "Unknown") for g in res_genes]) if res_genes else "None"
+        "Transformation": h_data.get("trans_method", "データなし"),
+        "Media": h_data.get("media", "データなし"),
+        "Incubation": h_data.get("incubation", "データなし"),
+        "Selection": ", ".join([h_data.get("antibiotics", {}).get(g, "不明") for g in res_genes]) if res_genes else "None detected"
     }
     
     st.json(protocol_disp)
     
-    # インサート入力がある場合のみPDF出力ボタンを表示
-    if ins_raw:
+    # インサート入力がある場合のみ、PDFダウンロードボタンを表示
+    if ins_raw and 'primers' in locals():
         pdf_data = create_pdf(
             host_choice, 
             selected_ez_name, 
@@ -129,4 +133,9 @@ if uploaded_file:
             str(primers["Reverse"]["seq"]), 
             protocol_disp
         )
-        st.download_button("📄 PDF プロトコルをダウンロード", data=bytes(pdf_data), file_name="protocol.pdf")
+        st.download_button(
+            label="📄 プロトコルをPDFでダウンロード", 
+            data=bytes(pdf_bytes if 'pdf_bytes' in locals() else pdf_data), 
+            file_name="cloning_protocol.pdf",
+            mime="application/pdf"
+        )
