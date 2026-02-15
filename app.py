@@ -1,7 +1,8 @@
 import streamlit as st
 import io
 import matplotlib.pyplot as plt
-from Bio import SeqIO, Restriction
+from Bio import SeqIO
+from Bio.Restriction import Analysis, Commando 
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.SeqFeature import SeqFeature, FeatureLocation
@@ -38,7 +39,7 @@ if uploaded_file:
     
     with col1:
         st.subheader("✂️ Cloning Site")
-        analysis = Restriction.Analysis(Restriction.Commando, record.seq)
+        analysis = Analysis(Commando, record.seq)
         unique_cutters = sorted([str(e) for e in analysis.unique_cutters()])
         
         if unique_cutters:

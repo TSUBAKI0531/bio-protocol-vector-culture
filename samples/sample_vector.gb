@@ -1,0 +1,28 @@
+LOCUS       Dummy_Vector            1000 bp    DNA     circular     15-FEB-2026
+DEFINITION  Dummy vector for app testing.
+FEATURES             Location/Qualifiers
+     misc_feature    1..800
+                     /label="AmpR"
+                     /note="Ampicillin resistance gene"
+     misc_feature    900..950
+                     /label="MCS"
+                     /note="Multiple Cloning Site"
+ORIGIN
+        1 tcgcgcgttt cggtgatgac ggtgaaaacc tctgacacat gcagctcccg gagacggtca
+       61 cagcttgtct gtaagcggat gccgggagca gacaagcccg tcagggcgcg tcagcgggtg
+      121 ttggcgggtg tcggggctgg cttaactatg cggcatcaga gcagattgta ctgagagtgc
+      181 accatatgcg gtgtgaaata ccgcacagat gcgtaaggag aaaataccgc atcaggcgcc
+      241 attcgccatt caggctgcgc aactgttggg aagggcgatc ggtgcgggcc tcttcgctat
+      301 tacgccagct ggcgaaaggg ggatgtgctg caaggcgatt aagttgggta acgccagggt
+      361 tttcccagtc acgacgttgt aaaacgacgg ccagtgaatt cgagctcggt acccggggat
+      421 cctctagagt cgacctgcag gcatgcaagc ttgccagtag tattagttag ttagttagtt
+      481 agttagttag ttagttagtt agttagttag ttagttagtt agttagttag ttagttagtt
+      541 agttagttag ttagttagtt agttagttag ttagttagtt agttagttag ttagttagtt
+      601 agttagttag ttagttagtt agttagttag ttagttagtt agttagttag ttagttagtt
+      661 agttagttag ttagttagtt agttagttag ttagttagtt agttagttag ttagttagtt
+      721 agttagttag ttagttagtt agttagttag ttagttagtt agttagttag ttagttagtt
+      781 agttagttag ttagttagtt agttagttag ttagttagtt agttagttag ttagttagtt
+      841 agttagttag ttagttagtt agttagttag ttagttagtt agttagttag ttagttagtt
+      901 agttagttag ttagttagtt agttagttag ttagttagtt agttagttag ttagttagtt
+      961 agttagttag ttagttagtt agttagttag ttagttagtt
+//
