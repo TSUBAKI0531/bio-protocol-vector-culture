@@ -2,7 +2,7 @@ import streamlit as st
 import io
 import matplotlib.pyplot as plt
 from Bio import SeqIO
-from Bio import Restriction  # インポートエラー回避のため一括インポート
+from Bio import Restriction  # 最も安定した読み込み方法
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.SeqFeature import SeqFeature, FeatureLocation
@@ -15,13 +15,13 @@ from modules.designer import design_gibson_primers, check_dimer
 from modules.exporter import create_pdf
 
 # --- UI 基本設定 ---
-st.set_page_config(page_title="BioDesigner v1.3", layout="wide", initial_sidebar_state="expanded")
-st.title("🧬 Cloning & Expression Designer")
-st.markdown("ベクター解析からプロトコル作成までを自動化します。")
+st.set_page_config(page_title="BioDesigner v1.4", layout="wide", initial_sidebar_state="expanded")
+st.title("🧪 Cloning & Expression Designer")
+st.markdown("ベクター解析、クローニング設計、プロトコル生成を一括で行います。")
 
 # --- 1. サイドバー: 宿主の設定 ---
 st.sidebar.header("1. Host Selection")
-host_choice = st.sidebar.selectbox("宿主を選択", list(CULTURE_DB.keys()))
+host_choice = st.sidebar.selectbox("対象とする宿主細胞", list(CULTURE_DB.keys()))
 
 # --- 2. メインパネル: ファイルアップロード ---
 st.header("📂 Step 1: Vector Upload")
@@ -44,12 +44,14 @@ if uploaded_file:
     with col1:
         st.subheader("制限酵素サイトの選択")
         
-        # 安定した制限酵素検索 (Commandoセットを使用)
+        # 安定した制限酵素検索
         try:
-            search_results = Restriction.Commando.search(record.seq)
-        except AttributeError:
-            # 万が一のフォールバック
-            search_results = Restriction.AllEnzymes.search(record.seq)
+            # Commando属性の存在を確認してから検索
+            batch = getattr(Restriction, 'Commando', Restriction.AllEnzymes)
+            search_results = batch.search(record.seq)
+        except Exception as e:
+            st.error(f"制限酵素の解析中にエラーが発生しました: {e}")
+            st.stop()
             
         # 1箇所だけ切る(Unique Cutter)酵素のリストを作成
         unique_cutters = sorted([str(enz) for enz, sites in search_results.items() if len(sites) == 1])
@@ -71,7 +73,7 @@ if uploaded_file:
         ins_raw = st.text_area("挿入する遺伝子配列(ATGC)を入力", placeholder="ATGGT...", height=150)
     
     if ins_raw and len(ins_raw) >= 40:
-        # 空白や改行を除去
+        # 配列のクリーニング（空白・改行削除）
         ins_seq = Seq(ins_raw.strip().replace("\n", "").replace(" ", "").upper())
         
         # プライマー設計
@@ -91,11 +93,9 @@ if uploaded_file:
         # --- 4. セクション2: 仮想プラスミド図 ---
         st.divider()
         st.header("🗺️ Step 3: Final Construct Map")
-        # ベクターを分割してインサートを挿入
         final_seq = record.seq[:cut_pos] + ins_seq + record.seq[cut_pos:]
         final_rec = SeqRecord(final_seq, id="Construct")
         
-        # フィーチャー（視覚パーツ）の追加
         final_rec.features.append(SeqFeature(FeatureLocation(0, cut_pos), type="misc_feature", qualifiers={"label": ["Vector_Up"]}))
         final_rec.features.append(SeqFeature(FeatureLocation(cut_pos, cut_pos + len(ins_seq)), type="CDS", qualifiers={"label": ["INSERT"], "color": ["#ff4b4b"]}))
         final_rec.features.append(SeqFeature(FeatureLocation(cut_pos + len(ins_seq), len(final_seq)), type="misc_feature", qualifiers={"label": ["Vector_Down"]}))
@@ -106,36 +106,41 @@ if uploaded_file:
         graphic_record.plot(ax=ax, with_ruler=True)
         st.pyplot(fig)
 
-    # --- 5. セクション3: 実験プロトコル ---
-    st.divider()
-    st.header("📋 Step 4: Experimental Protocol")
-    
-    # 耐性遺伝子の特定
-    res_genes = analyze_vector_resistance(record)
-    h_data = CULTURE_DB.get(host_choice, {})
-    
-    # KeyErrorを防ぐために .get() で安全にデータを取得
-    protocol_disp = {
-        "Transformation": h_data.get("trans_method", "データなし"),
-        "Media": h_data.get("media", "データなし"),
-        "Incubation": h_data.get("incubation", "データなし"),
-        "Selection": ", ".join([h_data.get("antibiotics", {}).get(g, "不明") for g in res_genes]) if res_genes else "None detected"
-    }
-    
-    st.json(protocol_disp)
-    
-    # インサート入力がある場合のみ、PDFダウンロードボタンを表示
-    if ins_raw and 'primers' in locals():
-        pdf_data = create_pdf(
-            host_choice, 
-            selected_ez_name, 
-            str(primers["Forward"]["seq"]), 
-            str(primers["Reverse"]["seq"]), 
-            protocol_disp
-        )
-        st.download_button(
-            label="📄 プロトコルをPDFでダウンロード", 
-            data=bytes(pdf_bytes if 'pdf_bytes' in locals() else pdf_data), 
-            file_name="cloning_protocol.pdf",
-            mime="application/pdf"
-        )
+        # --- 5. セクション3: 実験プロトコル ---
+        st.divider()
+        st.header("📋 Step 4: Experimental Protocol")
+        
+        res_genes = analyze_vector_resistance(record)
+        h_data = CULTURE_DB.get(host_choice, {})
+        
+        # 安全にデータを取得（KeyError対策）
+        protocol_disp = {
+            "Transformation": h_data.get("trans_method", "N/A"),
+            "Media": h_data.get("media", "N/A"),
+            "Incubation": h_data.get("incubation", "N/A"),
+            "Selection": ", ".join([h_data.get("antibiotics", {}).get(g, "Unknown") for g in res_genes]) if res_genes else "None detected"
+        }
+        
+        st.json(protocol_disp)
+        
+        # PDFダウンロードボタン
+        try:
+            pdf_data = create_pdf(
+                host_choice, 
+                selected_ez_name, 
+                str(primers["Forward"]["seq"]), 
+                str(primers["Reverse"]["seq"]), 
+                protocol_disp
+            )
+            
+            st.download_button(
+                label="📄 PDF プロトコルをダウンロード", 
+                data=bytes(pdf_data), 
+                file_name="cloning_protocol.pdf",
+                mime="application/pdf"
+            )
+        except Exception as e:
+            st.error(f"PDF生成中にエラーが発生しました: {e}")
+
+    elif ins_raw:
+        st.warning("インサート配列が短すぎます (40bp以上必要です)")
